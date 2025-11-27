@@ -77,6 +77,11 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(
+  DIRECTORY rviz
+  DESTINATION share/${PROJECT_NAME}
+)
+
 # Install nodes
 install(
   TARGETS vins_node
