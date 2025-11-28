@@ -491,12 +491,12 @@ int main(int argc, char **argv)
         load_flag = 1;
     }
 
-    auto sub_vio          = n->create_subscription<nav_msgs::msg::Odometry>("/vins_estimator/odometry", rclcpp::QoS(rclcpp::KeepLast(2000)), vio_callback);
+    auto sub_vio          = n->create_subscription<nav_msgs::msg::Odometry>("odometry", rclcpp::QoS(rclcpp::KeepLast(2000)), vio_callback);
     auto sub_image        = n->create_subscription<sensor_msgs::msg::Image>(IMAGE_TOPIC, rclcpp::QoS(rclcpp::KeepLast(2000)), image_callback);
-    auto sub_pose         = n->create_subscription<nav_msgs::msg::Odometry>("/vins_estimator/keyframe_pose", rclcpp::QoS(rclcpp::KeepLast(2000)), pose_callback);
-    auto sub_extrinsic    = n->create_subscription<nav_msgs::msg::Odometry>("/vins_estimator/extrinsic", rclcpp::QoS(rclcpp::KeepLast(2000)), extrinsic_callback);
-    auto sub_point        = n->create_subscription<sensor_msgs::msg::PointCloud>("/vins_estimator/keyframe_point", rclcpp::QoS(rclcpp::KeepLast(2000)), point_callback);
-    auto sub_margin_point = n->create_subscription<sensor_msgs::msg::PointCloud>("/vins_estimator/margin_cloud", rclcpp::QoS(rclcpp::KeepLast(2000)), margin_point_callback);
+    auto sub_pose         = n->create_subscription<nav_msgs::msg::Odometry>("keyframe_pose", rclcpp::QoS(rclcpp::KeepLast(2000)), pose_callback);
+    auto sub_extrinsic    = n->create_subscription<nav_msgs::msg::Odometry>("extrinsic", rclcpp::QoS(rclcpp::KeepLast(2000)), extrinsic_callback);
+    auto sub_point        = n->create_subscription<sensor_msgs::msg::PointCloud>("keyframe_point", rclcpp::QoS(rclcpp::KeepLast(2000)), point_callback);
+    auto sub_margin_point = n->create_subscription<sensor_msgs::msg::PointCloud>("margin_cloud", rclcpp::QoS(rclcpp::KeepLast(2000)), margin_point_callback);
 
 
     pub_match_img          = n->create_publisher<sensor_msgs::msg::Image>("match_image", 1000);
