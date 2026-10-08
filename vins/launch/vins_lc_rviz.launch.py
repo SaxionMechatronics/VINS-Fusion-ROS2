@@ -14,6 +14,7 @@ def generate_launch_description():
 
     config = LaunchConfiguration('config')
     bag_folder = LaunchConfiguration('bag_folder')
+    qos_overrides_path = LaunchConfiguration('qos_overrides_path')
 
     config_arg = DeclareLaunchArgument(
         'config',
@@ -23,6 +24,14 @@ def generate_launch_description():
     bag_arg = DeclareLaunchArgument(
         'bag_folder',
         description='Path to rosbag2 folder to play'
+    )
+
+    qos_overrides_arg = DeclareLaunchArgument(
+        'qos_overrides_path',
+        default_value='',
+        description='Optional path to a QoS profile overrides YAML file, '
+                     'passed to "ros2 bag play --qos-profile-overrides-path". '
+                     'Leave empty to disable.'
     )
 
     vins_rviz_launch = IncludeLaunchDescription(
@@ -36,6 +45,7 @@ def generate_launch_description():
         launch_arguments={
             'config': config,
             'bag_folder': bag_folder,
+            'qos_overrides_path': qos_overrides_path,
         }.items()
     )
 
@@ -50,6 +60,7 @@ def generate_launch_description():
     return LaunchDescription([
         config_arg,
         bag_arg,
+        qos_overrides_arg,
         vins_rviz_launch,
         loop_closure_proc,
     ])

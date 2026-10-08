@@ -15,6 +15,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/compressed_image.hpp>
 // #include <sensor_msgs/image_encodings.h>
 #include "image_encodings.hpp"
 #include <visualization_msgs/msg/marker.hpp>
@@ -119,6 +120,47 @@ void image_callback(const sensor_msgs::msg::Image::SharedPtr image_msg)
         new_sequence();
     }
     last_image_time = image_msg->header.stamp.sec + image_msg->header.stamp.nanosec * (1e-9);
+}
+
+// Returns true if the topic name looks like it carries sensor_msgs/CompressedImage,
+// following the image_transport convention of appending "/compressed" to the raw
+// image topic (e.g. "/cam0/image_raw/compressed").
+bool isCompressedImageTopic(const std::string &topic)
+{
+    static const std::string suffix = "/compressed";
+    return topic.size() >= suffix.size() &&
+           topic.compare(topic.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+
+void image_compressed_callback(const sensor_msgs::msg::CompressedImage::SharedPtr image_msg)
+{
+    cv_bridge::CvImagePtr ptr;
+    try
+    {
+        ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
+    }
+    catch (cv_bridge::Exception &e)
+    {
+        ROS_ERROR("cv_bridge exception decoding compressed image: %s", e.what());
+        return;
+    }
+    sensor_msgs::msg::Image::SharedPtr img = ptr->toImageMsg();
+
+    m_buf.lock();
+    image_buf.push(img);
+    m_buf.unlock();
+
+    // detect unstable camera stream
+    if (last_image_time == -1)
+        last_image_time = img->header.stamp.sec + img->header.stamp.nanosec * (1e-9);
+    else if (img->header.stamp.sec + img->header.stamp.nanosec * (1e-9) - last_image_time > 1.0
+                    || img->header.stamp.sec + img->header.stamp.nanosec * (1e-9) < last_image_time)
+    {
+        ROS_WARN("image discontinue! detect a new sequence!");
+        new_sequence();
+    }
+    last_image_time = img->header.stamp.sec + img->header.stamp.nanosec * (1e-9);
 }
 
 void point_callback(const sensor_msgs::msg::PointCloud::SharedPtr point_msg)
@@ -492,7 +534,21 @@ int main(int argc, char **argv)
     }
 
     auto sub_vio          = n->create_subscription<nav_msgs::msg::Odometry>("odometry", rclcpp::QoS(rclcpp::KeepLast(2000)), vio_callback);
-    auto sub_image        = n->create_subscription<sensor_msgs::msg::Image>(IMAGE_TOPIC, rclcpp::QoS(rclcpp::KeepLast(2000)), image_callback);
+
+    // IMAGE_TOPIC may point at a sensor_msgs/CompressedImage topic (identified by the
+    // image_transport "/compressed" suffix convention); subscribe with the matching
+    // message type in that case.
+    rclcpp::SubscriptionBase::SharedPtr sub_image;
+    if (isCompressedImageTopic(IMAGE_TOPIC))
+    {
+        ROS_WARN("IMAGE_TOPIC '%s' ends with /compressed, subscribing as sensor_msgs/CompressedImage", IMAGE_TOPIC.c_str());
+        sub_image = n->create_subscription<sensor_msgs::msg::CompressedImage>(IMAGE_TOPIC, rclcpp::QoS(rclcpp::KeepLast(2000)), image_compressed_callback);
+    }
+    else
+    {
+        sub_image = n->create_subscription<sensor_msgs::msg::Image>(IMAGE_TOPIC, rclcpp::QoS(rclcpp::KeepLast(2000)), image_callback);
+    }
+
     auto sub_pose         = n->create_subscription<nav_msgs::msg::Odometry>("keyframe_pose", rclcpp::QoS(rclcpp::KeepLast(2000)), pose_callback);
     auto sub_extrinsic    = n->create_subscription<nav_msgs::msg::Odometry>("extrinsic", rclcpp::QoS(rclcpp::KeepLast(2000)), extrinsic_callback);
     auto sub_point        = n->create_subscription<sensor_msgs::msg::PointCloud>("keyframe_point", rclcpp::QoS(rclcpp::KeepLast(2000)), point_callback);

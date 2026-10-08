@@ -16,6 +16,7 @@
 #include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/msg/compressed_image.hpp>
 #include <opencv2/opencv.hpp>
 #include "estimator/estimator.h"
 #include "estimator/parameters.h"
@@ -43,6 +44,50 @@ void img1_callback(const sensor_msgs::msg::Image::SharedPtr img_msg)
     m_buf.lock();
     // std::cout << "Right: " << img_msg->header.stamp.sec << "." << img_msg->header.stamp.nanosec << endl;
     img1_buf.push(img_msg);
+    m_buf.unlock();
+}
+
+
+bool isCompressedImageTopic(const std::string &topic)
+{
+    static const std::string suffix = "/compressed";
+    return topic.size() >= suffix.size() &&
+           topic.compare(topic.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+void img0_compressed_callback(const sensor_msgs::msg::CompressedImage::SharedPtr img_msg)
+{
+    cv_bridge::CvImagePtr ptr;
+    try
+    {
+        ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::MONO8);
+    }
+    catch (cv_bridge::Exception &e)
+    {
+        ROS_ERROR("cv_bridge exception decoding compressed image0: %s", e.what());
+        return;
+    }
+    sensor_msgs::msg::Image::SharedPtr img = ptr->toImageMsg();
+    m_buf.lock();
+    img0_buf.push(img);
+    m_buf.unlock();
+}
+
+void img1_compressed_callback(const sensor_msgs::msg::CompressedImage::SharedPtr img_msg)
+{
+    cv_bridge::CvImagePtr ptr;
+    try
+    {
+        ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::MONO8);
+    }
+    catch (cv_bridge::Exception &e)
+    {
+        ROS_ERROR("cv_bridge exception decoding compressed image1: %s", e.what());
+        return;
+    }
+    sensor_msgs::msg::Image::SharedPtr img = ptr->toImageMsg();
+    m_buf.lock();
+    img1_buf.push(img);
     m_buf.unlock();
 }
 
@@ -272,12 +317,33 @@ int main(int argc, char **argv)
         sub_imu = n->create_subscription<sensor_msgs::msg::Imu>(IMU_TOPIC, rclcpp::QoS(rclcpp::KeepLast(2000)), imu_callback);
     }
     auto sub_feature = n->create_subscription<sensor_msgs::msg::PointCloud>("/feature_tracker/feature", rclcpp::QoS(rclcpp::KeepLast(2000)), feature_callback);
-    auto sub_img0 = n->create_subscription<sensor_msgs::msg::Image>(IMAGE0_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), img0_callback);
-    
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_img1 = NULL;
+
+    // image0_topic/image1_topic may point at a sensor_msgs/CompressedImage topic
+    // (identified by the image_transport "/compressed" suffix convention); subscribe
+    // with the matching message type in that case.
+    rclcpp::SubscriptionBase::SharedPtr sub_img0;
+    if (isCompressedImageTopic(IMAGE0_TOPIC))
+    {
+        ROS_WARN("IMAGE0_TOPIC '%s' ends with /compressed, subscribing as sensor_msgs/CompressedImage", IMAGE0_TOPIC.c_str());
+        sub_img0 = n->create_subscription<sensor_msgs::msg::CompressedImage>(IMAGE0_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), img0_compressed_callback);
+    }
+    else
+    {
+        sub_img0 = n->create_subscription<sensor_msgs::msg::Image>(IMAGE0_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), img0_callback);
+    }
+
+    rclcpp::SubscriptionBase::SharedPtr sub_img1 = NULL;
     if(STEREO)
     {
-        sub_img1 = n->create_subscription<sensor_msgs::msg::Image>(IMAGE1_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), img1_callback);
+        if (isCompressedImageTopic(IMAGE1_TOPIC))
+        {
+            ROS_WARN("IMAGE1_TOPIC '%s' ends with /compressed, subscribing as sensor_msgs/CompressedImage", IMAGE1_TOPIC.c_str());
+            sub_img1 = n->create_subscription<sensor_msgs::msg::CompressedImage>(IMAGE1_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), img1_compressed_callback);
+        }
+        else
+        {
+            sub_img1 = n->create_subscription<sensor_msgs::msg::Image>(IMAGE1_TOPIC, rclcpp::QoS(rclcpp::KeepLast(100)), img1_callback);
+        }
     }
     
     auto sub_restart = n->create_subscription<std_msgs::msg::Bool>("/vins_restart", rclcpp::QoS(rclcpp::KeepLast(100)), restart_callback);

@@ -1,6 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
-from launch.substitutions import LaunchConfiguration
+from launch.conditions import IfCondition, UnlessCondition
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -20,8 +21,18 @@ def generate_launch_description():
         description='Path to rosbag2 folder to play'
     )
 
+    qos_overrides_arg = DeclareLaunchArgument(
+        'qos_overrides_path',
+        default_value='',
+        description='Optional path to a QoS profile overrides YAML file, '
+                     'passed to "ros2 bag play --qos-profile-overrides-path". '
+                     'Leave empty to disable.'
+    )
+
     config = LaunchConfiguration('config')
     bag_folder = LaunchConfiguration('bag_folder')
+    qos_overrides_path = LaunchConfiguration('qos_overrides_path')
+    has_qos_overrides = PythonExpression(["'", qos_overrides_path, "' != ''"])
 
     rviz_config = os.path.join(pkg_share, 'rviz', 'vins_rviz_config_ros2.rviz')
 
@@ -44,9 +55,18 @@ def generate_launch_description():
     bag_play = TimerAction(
         period=3.0,
         actions=[
+            # Used when qos_overrides_path is set.
+            ExecuteProcess(
+                cmd=['ros2', 'bag', 'play', bag_folder,
+                     '--qos-profile-overrides-path', qos_overrides_path],
+                output='screen',
+                condition=IfCondition(has_qos_overrides)
+            ),
+            # Used when qos_overrides_path is left empty (default).
             ExecuteProcess(
                 cmd=['ros2', 'bag', 'play', bag_folder],
-                output='screen'
+                output='screen',
+                condition=UnlessCondition(has_qos_overrides)
             )
         ]
     )
@@ -54,6 +74,7 @@ def generate_launch_description():
     return LaunchDescription([
         config_arg,
         bag_arg,
+        qos_overrides_arg,
         vins_node,
         rviz2,
         bag_play,
